@@ -1,27 +1,48 @@
-import { ITrackerTransport } from "./ITrackerTransport";
-import { TraceLevel } from "./Logger";
+import { ITransport } from "./ITransport";
 import * as applicationinsights from "applicationinsights";
 const uuidv4 = require("uuid/v4");
 
-export class AppInsightsTrackerTransport implements ITrackerTransport {
+enum TraceLevel {
+    Verbose = 0,
+    Info = 1,
+    Warn = 2,
+    Error = 3
+}
+
+export class AppInsightsTransport implements ITransport {
 
     private client: any;
 
-    constructor(key: string) {
+    constructor(key: string, public readonly name: string = "appInsights") {
         this.client = applicationinsights.getClient(key);
         let sessionKey = this.client.context.keys.sessionId;
         this.client.context.tags[sessionKey] = uuidv4();
+    }
+
+    public error(message: string, data?: { [key: string]: any; }): void {
+        this.trace(message, TraceLevel.Error);
+    }
+
+    public warn(message: string, data?: { [key: string]: any; }): void {
+        this.trace(message, TraceLevel.Warn);
+    }
+
+    public info(message: string, data?: { [key: string]: any; }): void {
+        this.trace(message, TraceLevel.Info);
+    }
+
+    public verbose(message: string, data?: { [key: string]: any; }): void {
+        this.trace(message, TraceLevel.Verbose);
+    }
+
+    public debug(message: string, data?: { [key: string]: any; }): void {
+        this.trace(message, TraceLevel.Verbose);
     }
 
     public event(name: string, duration: number, data?: { [key: string]: any; }): void {
         let properties = this.createProperties(data);
         properties.duration = duration.toString();
         this.client.trackEvent(name, properties);
-    }
-
-    public trace(message: string, traceLevel: TraceLevel, data?: { [key: string]: any; }): void {
-        let properties = this.createProperties(data);
-        this.client.trackTrace(message, traceLevel, properties);
     }
 
     public metric(
@@ -38,6 +59,11 @@ export class AppInsightsTrackerTransport implements ITrackerTransport {
     public exception(exception: Error, data?: { [key: string]: any; }): void {
         let properties = this.createProperties(data);
         this.client.trackException(exception, properties);
+    }
+
+    private trace(message: string, traceLevel: TraceLevel, data?: { [key: string]: any; }): void {
+        let properties = this.createProperties(data);
+        this.client.trackTrace(message, traceLevel, properties);
     }
 
     private createProperties(data?: { [key: string]: any; }): { [key: string]: string; } {

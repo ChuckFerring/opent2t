@@ -1,122 +1,161 @@
-import { ITrackerTransport } from "./ITrackerTransport";
-import * as winston from "winston";
+import { ITransport } from "./ITransport";
 
-export enum TraceLevel {
-    Verbose = 0,
-    Info = 1,
-    Warn = 2,
-    Error = 3
+export enum LogLevel {
+    None =      0,
+    Error =     1,
+    Warning =   1 << 1,
+    Info =      1 << 2,
+    Verbose =   1 << 3,
+    Debug =     1 << 4,
+    Event =     1 << 5,
+    Metric =    1 << 6,
+    Exception = 1 << 7,
 }
 
 /**
  * Provides logging and telemetry processing functionality.
- * 
- * Logging is done via winston transports.
- * Telemetry is done via ITrackerTransports.
  */
 export class Logger {
+    private globalLogLevel: LogLevel = LogLevel.Error |
+                                        LogLevel.Warning |
+                                        LogLevel.Info |
+                                        LogLevel.Verbose |
+                                        LogLevel.Event |
+                                        LogLevel.Metric |
+                                        LogLevel.Exception;
 
-    private globalLogLevel: string;
-    private logger: any = new winston.Logger();
-    private transportList: Array<ITrackerTransport> = [];
+    private transportList: { [key: string]: { transport: ITransport, level: LogLevel }} = {};
+    private transportNames: Array<string> = [];
 
     /**
      * Creates a openT2T logger.
-     * @param {string} logLevel The global winston log level.
-     * @param {boolean} enableConsole Whether to enable console logging.
+     * @param {LogLevel} logLevel The global log level.
      */
-    constructor(logLevel: string = "verbose", enableConsole: boolean = true) {
-        this.globalLogLevel = logLevel;
-
-        if (enableConsole) {
-            this.addLoggerTransport(winston.transports.Console, { colorize: true, level: this.globalLogLevel });
+    constructor(logLevel?: LogLevel) {
+        if (logLevel) {
+            this.globalLogLevel = logLevel;
         }
     }
 
     /**
-     * Add a new winston logging transport
-     * @param {any} transport The winston logging transport to add
-     * @param {any} options The transport options
+     * Sets the log level of a transport if a transport is specified,
+     * Otherwise sets the global log level as well as the log level of all transports
+     * @param {LogLevel} logLevel The LogLevel to set
+     * @param {string} transportName The name of the transport whose log level will be set
      */
-    public addLoggerTransport(transport: any, options: any): void {
-        this.logger.add(transport, options);
-    }
+    public setLogLevel(logLevel: LogLevel, transportName?: string): void {
+        if (transportName) {
+            let transportItem = this.transportList[transportName];
+            if (!transportItem) {
+                throw new Error(`Transport not found: ${transportName}`);
+            }
 
-    /**
-     * Remove a winston logging transport
-     * @param {any} transport The winston logging transport to remove
-     */
-    public removeLoggerTransport(transport: any): void {
-        this.logger.remove(transport);
-    }
+            transportItem.level = logLevel;
+        } else {
+            this.globalLogLevel = logLevel;
 
-    /**
-     * Add a telemetry tracker transport
-     * @param {ITrackerTransport} transport The telemetry tracker transport to add
-     */
-    public addTrackerTransport(transport: ITrackerTransport): void {
-        let index = this.transportList.indexOf(transport);
-
-        if (index === -1) {
-            this.transportList.push(transport);
+            this.transportNames.forEach((name: string) => {
+                this.transportList[name].level = logLevel;
+            });
         }
     }
 
     /**
-     * Remove a telemetry tracker transport
-     * @param {ITrackerTransport} transport The telemetry tracker transport to remove
+     * Gets the global log level or the log level of a transport if specified
+     * @param {string} transportName The name of the transport whose log level will be returned
      */
-    public removeTrackerTransport(transport: ITrackerTransport): void {
-        let index = this.transportList.indexOf(transport);
+    public getLogLevel(transportName?: string): LogLevel {
+        if (transportName) {
+            let transportItem = this.transportList[transportName];
+            if (!transportItem) {
+                throw new Error(`Transport not found: ${transportName}`);
+            }
 
+            return transportItem.level;
+        }
+
+        return this.globalLogLevel;
+    }
+
+    /**
+     * Add a logging transport
+     * @param {ITransport} transport The transport to add
+     * @param {LogLevel} level The logging level for the transport
+     */
+    public addTransport(transport: ITransport, level: LogLevel = this.globalLogLevel): void {
+        let name = transport.name;
+
+        if (this.transportList[name]) {
+            throw new Error(`Transport already exists: ${name}`);
+        }
+
+        this.transportList[name] = {transport, level};
+
+        if (this.transportNames.indexOf(name) === -1) {
+            this.transportNames.push(name);
+        }
+    }
+
+    /**
+     * Remove a logging transport
+     * @param {string} name The name of the transport to remove
+     */
+    public removeTransport(name: string): void {
+        if (!this.transportList[name]) {
+            throw new Error(`Transport not found: ${name}`);
+        }
+
+        delete this.transportList[name];
+
+        let index = this.transportNames.indexOf(name);
         if (index > -1) {
-            this.transportList.splice(index, 1);
+            this.transportNames.splice(index, 1);
         }
     }
 
     /**
-     * Emit a winston log error
-     * @param {string} msg The error message
-     * @param {any} logObject Error properties
+     * Emit an error
+     * @param {string} message The error message
+     * @param {*} data Error data
      */
-    public error(msg: string, logObject?: any): void {
-        this.logger.error(msg, logObject);
+    public error(message: string, data?: { [key: string]: any; }): void {
+        this.callAllTrackingTransports(LogLevel.Error, t => t.error(message, data));
     }
 
     /**
-     * Emit a winston log warning
-     * @param {string} msg The warning message
-     * @param {any} logObject Warning properties
+     * Emit a warning
+     * @param {string} message The warning message
+     * @param {*} data Warning data
      */
-    public warn(msg: string, logObject?: any): void {
-        this.logger.warn(msg, logObject);
+    public warn(message: string, data?: { [key: string]: any; }): void {
+        this.callAllTrackingTransports(LogLevel.Warning, t => t.warn(message, data));
     }
 
     /**
-     * Emit a winston log information message
-     * @param {string} msg The info message
-     * @param {any} logObject Info message properties
+     * Emit an information message
+     * @param {string} message The info message
+     * @param {*} data Info message data
      */
-    public info(msg: string, logObject?: any): void {
-        this.logger.info(msg, logObject);
+    public info(message: string, data?: { [key: string]: any; }): void {
+        this.callAllTrackingTransports(LogLevel.Info, t => t.info(message, data));
     }
 
     /**
-     * Emit a winston log verbose message
-     * @param {string} msg The verbose message
-     * @param {any} logObject Verbose message properties
+     * Emit a verbose message
+     * @param {string} message The verbose message
+     * @param {*} data Verbose message data
      */
-    public verbose(msg: string, logObject?: any): void {
-        this.logger.verbose(msg, logObject);
+    public verbose(message: string, data?: { [key: string]: any; }): void {
+        this.callAllTrackingTransports(LogLevel.Verbose, t => t.verbose(message, data));
     }
 
     /**
-     * Emit a winston log debug message
-     * @param {string} msg The debug message
-     * @param {any} logObject Debug message properties
+     * Emit a debug message
+     * @param {string} message The debug message
+     * @param {*} data Debug message data
      */
-    public debug(msg: string, logObject?: any): void {
-        this.logger.debug(msg, logObject);
+    public debug(message: string, data?: { [key: string]: any; }): void {
+        this.callAllTrackingTransports(LogLevel.Debug, t => t.debug(message, data));
     }
 
     /**
@@ -126,17 +165,7 @@ export class Logger {
      * @param {*} data Event data
      */
     public event(name: string, duration: number, data?: { [key: string]: any; }): void {
-        this.callAllTrackingTransports(t => t.event(name, duration, data));
-    }
-
-    /**
-     * Emit a telemetry trace
-     * @param {string} message Trace message
-     * @param {TraceLevel} traceLevel Trace level
-     * @param {*} data Trace data
-     */
-    public trace(message: string, traceLevel: TraceLevel, data?: { [key: string]: any; }): void {
-        this.callAllTrackingTransports(t => t.trace(message, traceLevel, data));
+        this.callAllTrackingTransports(LogLevel.Event, t => t.event(name, duration, data));
     }
 
     /**
@@ -155,7 +184,7 @@ export class Logger {
         min?: number,
         max?: number,
         data?: { [key: string]: any; }): void {
-        this.callAllTrackingTransports(t => t.metric(name, value, count, min, max, data));
+        this.callAllTrackingTransports(LogLevel.Metric, t => t.metric(name, value, count, min, max, data));
     }
 
     /**
@@ -164,19 +193,16 @@ export class Logger {
      * @param {*} data Exception data
      */
     public exception(exception: Error, data?: { [key: string]: any; }): void {
-        this.callAllTrackingTransports(t => t.exception(exception, data));
+        this.callAllTrackingTransports(LogLevel.Exception, t => t.exception(exception, data));
     }
 
-    /**
-     * Gets the names of the configured winston logging transports
-     */
-    public getConfiguredLoggerTransports(): Array<string> {
-        return this.logger._names;
-    }
+    private callAllTrackingTransports(level: LogLevel, action: (tracker: ITransport) => void): void {
+        this.transportNames.forEach((name: string) => {
+            let transportItem = this.transportList[name];
 
-    private callAllTrackingTransports(action: (tracker: ITrackerTransport) => void): void {
-        this.transportList.forEach((tracker: ITrackerTransport) => {
-            action(tracker);
+            if (transportItem.level & level) {
+                action(transportItem.transport);
+            }
         });
     }
 }

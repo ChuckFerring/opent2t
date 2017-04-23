@@ -2,12 +2,13 @@
 // using AVA test runner from https://github.com/avajs/ava
 
 import test from "ava";
-import * as fs from "mz/fs";
 import * as path from "path";
-import * as winston from "winston";
 
 import {
+    AppInsightsTransport,
+    ConsoleTransport,
     IThingTranslator,
+    LogLevel,
     Logger,
     OpenT2T,
     OpenT2TConstants,
@@ -19,9 +20,10 @@ const schemaA = "org.opent2t.test.schemas.a";
 const schemaB = "org.opent2t.test.schemas.b";
 const translatorOne = "org.opent2t.test.translators.one/js/thingTranslator";
 const translatorTwo = "org.opent2t.test.translators.two/js/thingTranslator";
-const testLogFileName = "myloggertest.log";
 
-let opent2t = new OpenT2T();
+let testLogger = new Logger();
+testLogger.addTransport(new ConsoleTransport());
+let opent2t = new OpenT2T(testLogger);
 
 // Adjust for a path that is relative to the /test directory.
 function testPath(modulePath: string): any {
@@ -137,12 +139,67 @@ test("JSON.stringify() on OpenT2TError object returns a valid JSON object", asyn
 
 test("Logger with default parameters can be instantiated", async t => {
     let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
 });
 
+test("Logger with multiple transports", async t => {
+    let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
+    logger.addTransport(new ConsoleTransport("consoleTwo"));
+    logger.info("Writing to multiple console transports.");
+});
+
+test("Logger remove transport", async t => {
+    let logger = new Logger();
+    let transportName = "consoleTwo";
+    logger.addTransport(new ConsoleTransport());
+    logger.addTransport(new ConsoleTransport(transportName));
+    logger.removeTransport(transportName);
+    logger.info("Writing to console transport after removing second transport.");
+});
+
+test("Logger adding duplicate transport throws", async t => {
+    let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
+    t.throws(() => logger.addTransport(new ConsoleTransport()), Error);
+});
+
+test("Logger removing non-existent transport throws", async t => {
+    let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
+    t.throws(() => logger.removeTransport("non-existent"), Error);
+});
+
+test("Logger set log level for transport", async t => {
+    let logger = new Logger();
+    let name = "myTransport";
+    let logLevel = LogLevel.None;
+    logger.addTransport(new ConsoleTransport(name));
+    logger.setLogLevel(logLevel, name);
+    t.is(logger.getLogLevel(name), logLevel, "Verify log level for transport was updated.");
+});
+
+test("Logger set global log level", async t => {
+    let logger = new Logger();
+    let name = "myTransport";
+    let logLevel = LogLevel.None;
+    logger.addTransport(new ConsoleTransport(name));
+    logger.setLogLevel(logLevel);
+    t.is(logger.getLogLevel(), logLevel, "Verify global log level was updated.");
+    t.is(logger.getLogLevel(name), logLevel, "Verify log level for transport was updated.");
+});
+
+test("Logger add multiple transports of different types", async t => {
+    let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
+    logger.addTransport(new AppInsightsTransport("test"));
+});
+
 test("Logger with default parameters can log a non-primitive type", async t => {
     let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
     let myArray: Array<any> = ["firstObject", "secondObject", ["nestedObj1", "nestedObj2"]];
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
@@ -151,6 +208,7 @@ test("Logger with default parameters can log a non-primitive type", async t => {
 
 test("Logger with default parameters can be instantiated multiple times", async t => {
     let logger = new Logger();
+    logger.addTransport(new ConsoleTransport());
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
 
@@ -159,17 +217,4 @@ test("Logger with default parameters can be instantiated multiple times", async 
     /* tslint:enable:no-unused-variable */
 
     logger.info("2nd Logger - Writing default level to default console");
-});
-
-test("Logger can be instantiated with custom file parameter", async t => {
-    let logger = new Logger();
-    logger.addLoggerTransport(winston.transports.File, { filename: testLogFileName });
-    logger.info("Writing default level to default console + file.");
-    logger.warn("writing warn level to default console + file.");
-    t.is(logger.getConfiguredLoggerTransports().length, 2);
-});
-
-test.after("Deleting created log file", async t => {
-    let fullPathName = path.join(__dirname, testLogFileName);
-    return fs.unlinkSync(fullPathName);
 });
