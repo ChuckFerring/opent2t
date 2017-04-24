@@ -10,30 +10,33 @@ export enum LogLevel {
     Event =     1 << 5,
     Metric =    1 << 6,
     Exception = 1 << 7,
+    All =       LogLevel.Error |
+                    LogLevel.Warning |
+                    LogLevel.Info |
+                    LogLevel.Verbose |
+                    LogLevel.Debug |
+                    LogLevel.Event |
+                    LogLevel.Metric |
+                    LogLevel.Exception
 }
 
 /**
  * Provides logging and telemetry processing functionality.
  */
 export class Logger {
-    private globalLogLevel: LogLevel = LogLevel.Error |
-                                        LogLevel.Warning |
-                                        LogLevel.Info |
-                                        LogLevel.Verbose |
-                                        LogLevel.Event |
-                                        LogLevel.Metric |
-                                        LogLevel.Exception;
-
+    private globalLogLevel: LogLevel = LogLevel.All & ~LogLevel.Debug;
     private transportList: { [key: string]: { transport: ITransport, level: LogLevel }} = {};
     private transportNames: Array<string> = [];
 
-    /**
-     * Creates a openT2T logger.
-     * @param {LogLevel} logLevel The global log level.
-     */
-    constructor(logLevel?: LogLevel) {
+    constructor(transports?: Array<ITransport>, logLevel?: LogLevel) {
         if (logLevel) {
             this.globalLogLevel = logLevel;
+        }
+
+        if (transports) {
+            transports.forEach(t => {
+                this.addTransport(t);
+            });
         }
     }
 
@@ -78,6 +81,26 @@ export class Logger {
     }
 
     /**
+     * enables additional log levels of a transport if a transport is specified,
+     * Otherwise enables additional log levels of the global log level as well as the log level of all transports 
+     * @param logLevel 
+     * @param transportName 
+     */
+    public enableLogLevel(logLevel: LogLevel, transportName?: string): void {
+        this.setLogLevel(this.getLogLevel(transportName) | logLevel, transportName );
+    }
+
+    /**
+     * disables specified log levels of a transport if a transport is specified,
+     * Otherwise disables specified log levels of the global log level as well as the log level of all transports 
+     * @param logLevel 
+     * @param transportName 
+     */
+    public disableLogLevel(logLevel: LogLevel, transportName?: string): void {
+        this.setLogLevel(this.getLogLevel(transportName) & ~logLevel, transportName );
+    }
+
+    /**
      * Add a logging transport
      * @param {ITransport} transport The transport to add
      * @param {LogLevel} level The logging level for the transport
@@ -111,6 +134,13 @@ export class Logger {
         if (index > -1) {
             this.transportNames.splice(index, 1);
         }
+    }
+
+    /**
+     * Returns the identifiers of the configured transports
+     */
+    get transportIds(): Array<string> {
+        return this.transportNames.slice();
     }
 
     /**

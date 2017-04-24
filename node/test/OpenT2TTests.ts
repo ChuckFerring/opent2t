@@ -21,9 +21,11 @@ const schemaB = "org.opent2t.test.schemas.b";
 const translatorOne = "org.opent2t.test.translators.one/js/thingTranslator";
 const translatorTwo = "org.opent2t.test.translators.two/js/thingTranslator";
 
-let testLogger = new Logger();
-testLogger.addTransport(new ConsoleTransport());
-let opent2t = new OpenT2T(testLogger);
+// let testLogger = new Logger();
+// testLogger.addTransport(new ConsoleTransport());
+// let opent2t = new OpenT2T(testLogger);
+let opent2t = new OpenT2T();
+let consoleTransport = new ConsoleTransport();
 
 // Adjust for a path that is relative to the /test directory.
 function testPath(modulePath: string): any {
@@ -139,76 +141,116 @@ test("JSON.stringify() on OpenT2TError object returns a valid JSON object", asyn
 
 test("Logger with default parameters can be instantiated", async t => {
     let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
+    t.is(logger.transportIds.length, 0, "No transports are configured by default");
+    logger.addTransport(consoleTransport);
+    let transportIds = logger.transportIds;
+    t.is(transportIds.length, 1, "1 transport configured");
+    t.is(transportIds[0], "console", "Default console log has id 'console'");
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
 });
 
 test("Logger with multiple transports", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
-    logger.addTransport(new ConsoleTransport("consoleTwo"));
+    let transportName = "consoleTwo";
+    let logger = new Logger([consoleTransport, new ConsoleTransport(transportName)]);
+    let transportIds = logger.transportIds;
+    t.is(transportIds.length, 2, "2 transports configured");
+    t.true(transportIds.indexOf(transportName) !== -1, "named console transport configured");
     logger.info("Writing to multiple console transports.");
 });
 
 test("Logger remove transport", async t => {
-    let logger = new Logger();
     let transportName = "consoleTwo";
-    logger.addTransport(new ConsoleTransport());
-    logger.addTransport(new ConsoleTransport(transportName));
+    let logger = new Logger([consoleTransport, new ConsoleTransport(transportName)]);
+    t.is(logger.transportIds.length, 2, "2 transports configured");
     logger.removeTransport(transportName);
+    let transportIds = logger.transportIds;
+    t.is(transportIds.length, 1, "1 transport configured after removal");
+    t.true(transportIds.indexOf(transportName) === -1, "named console transport not configured");
     logger.info("Writing to console transport after removing second transport.");
 });
 
 test("Logger adding duplicate transport throws", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
+    let logger = new Logger([consoleTransport]);
     t.throws(() => logger.addTransport(new ConsoleTransport()), Error);
 });
 
 test("Logger removing non-existent transport throws", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
+    let logger = new Logger([consoleTransport]);
     t.throws(() => logger.removeTransport("non-existent"), Error);
 });
 
 test("Logger set log level for transport", async t => {
-    let logger = new Logger();
-    let name = "myTransport";
+    let name = consoleTransport.name;
+    let logger = new Logger([consoleTransport]);
+    let globalLevel = logger.getLogLevel();
     let logLevel = LogLevel.None;
-    logger.addTransport(new ConsoleTransport(name));
     logger.setLogLevel(logLevel, name);
     t.is(logger.getLogLevel(name), logLevel, "Verify log level for transport was updated.");
+    t.is(logger.getLogLevel(), globalLevel, "Verify global log level was not changed.");
 });
 
 test("Logger set global log level", async t => {
-    let logger = new Logger();
-    let name = "myTransport";
+    let logger = new Logger([consoleTransport]);
     let logLevel = LogLevel.None;
-    logger.addTransport(new ConsoleTransport(name));
     logger.setLogLevel(logLevel);
     t.is(logger.getLogLevel(), logLevel, "Verify global log level was updated.");
+    t.is(logger.getLogLevel(consoleTransport.name), logLevel, "Verify log level for transport was updated.");
+});
+
+test("Logger enable log level for transport", async t => {
+    let name = consoleTransport.name;
+    let globalLevel = LogLevel.Error | LogLevel.Warning;
+    let logger = new Logger([consoleTransport], globalLevel);
+    let logLevel = LogLevel.Error | LogLevel.Warning | LogLevel.Info;
+    logger.enableLogLevel(LogLevel.Error | LogLevel.Info, name);
     t.is(logger.getLogLevel(name), logLevel, "Verify log level for transport was updated.");
+    t.is(logger.getLogLevel(), globalLevel, "Verify global log level was not changed.");
+});
+
+test("Logger enable global log level", async t => {
+    let logLevel = LogLevel.Error | LogLevel.Warning;
+    let logger = new Logger([consoleTransport], logLevel);
+    logLevel = LogLevel.Error | LogLevel.Warning | LogLevel.Info;
+    logger.enableLogLevel(LogLevel.Error | LogLevel.Info);
+    t.is(logger.getLogLevel(), logLevel, "Verify global log level was updated.");
+    t.is(logger.getLogLevel(consoleTransport.name), logLevel, "Verify log level for transport was updated.");
+});
+
+test("Logger disable log level for transport", async t => {
+    let name = consoleTransport.name;
+    let globalLevel = LogLevel.Error | LogLevel.Warning | LogLevel.Info;
+    let logger = new Logger([consoleTransport], globalLevel);
+    let logLevel = LogLevel.Error | LogLevel.Warning;
+    logger.disableLogLevel(LogLevel.Info | LogLevel.Verbose, name);
+    t.is(logger.getLogLevel(name), logLevel, "Verify log level for transport was updated.");
+    t.is(logger.getLogLevel(), globalLevel, "Verify global log level was not changed.");
+});
+
+test("Logger disable global log level", async t => {
+    let logLevel = LogLevel.Error | LogLevel.Warning | LogLevel.Info;
+    let logger = new Logger([consoleTransport], logLevel);
+    logLevel = LogLevel.Error | LogLevel.Warning;
+    logger.disableLogLevel(LogLevel.Info | LogLevel.Verbose);
+    t.is(logger.getLogLevel(), logLevel, "Verify global log level was updated.");
+    t.is(logger.getLogLevel(consoleTransport.name), logLevel, "Verify log level for transport was updated.");
 });
 
 test("Logger add multiple transports of different types", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
-    logger.addTransport(new AppInsightsTransport("test"));
+    let logger = new Logger([consoleTransport, new AppInsightsTransport("test")]);
+    t.is(logger.transportIds.length, 2, "Logger created with 2 transports");
 });
 
-test("Logger with default parameters can log a non-primitive type", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
+test("Logger can log a non-primitive type", async t => {
+    let logger = new Logger([consoleTransport]);
     let myArray: Array<any> = ["firstObject", "secondObject", ["nestedObj1", "nestedObj2"]];
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
     logger.warn("Writing array object to default console", myArray);
 });
 
-test("Logger with default parameters can be instantiated multiple times", async t => {
-    let logger = new Logger();
-    logger.addTransport(new ConsoleTransport());
+test("Logger can be instantiated multiple times", async t => {
+    let logger = new Logger([consoleTransport]);
     logger.info("Writing default level to default console.");
     logger.debug("writing debug level to default console.");
 
