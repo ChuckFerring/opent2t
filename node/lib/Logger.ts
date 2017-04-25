@@ -1,118 +1,47 @@
-import { ITransport } from "./ITransport";
-
-export enum LogLevel {
-    None =      0,
-    Error =     1,
-    Warning =   1 << 1,
-    Info =      1 << 2,
-    Verbose =   1 << 3,
-    Debug =     1 << 4,
-    Event =     1 << 5,
-    Metric =    1 << 6,
-    Exception = 1 << 7,
-    All =       LogLevel.Error |
-                    LogLevel.Warning |
-                    LogLevel.Info |
-                    LogLevel.Verbose |
-                    LogLevel.Debug |
-                    LogLevel.Event |
-                    LogLevel.Metric |
-                    LogLevel.Exception
-}
+import { Transport } from "./Transport";
+import { LogLevel } from "./Transport";
 
 /**
  * Provides logging and telemetry processing functionality.
  */
-export class Logger {
-    private globalLogLevel: LogLevel = LogLevel.All & ~LogLevel.Debug;
-    private transportList: { [key: string]: { transport: ITransport, level: LogLevel }} = {};
+export class Logger extends Transport {
+    private static readonly defaultName: string = "Logger";
+    private static readonly defaultLogLevel: LogLevel = LogLevel.All & ~LogLevel.Debug;
+
+    private transportList: { [key: string]: Transport} = {};
     private transportNames: Array<string> = [];
 
-    constructor(transports?: Array<ITransport>, logLevel?: LogLevel) {
-        if (logLevel) {
-            this.globalLogLevel = logLevel;
+    constructor(options: any = {}) {
+        super(options.name || Logger.defaultName, options);
+
+        if (!options.level) {
+            this.level = Logger.defaultLogLevel;
         }
 
-        if (transports) {
-            transports.forEach(t => {
+        if (options.transports) {
+            options.transports.forEach((t: Transport) => {
                 this.addTransport(t);
             });
         }
     }
 
     /**
-     * Sets the log level of a transport if a transport is specified,
-     * Otherwise sets the global log level as well as the log level of all transports
-     * @param {LogLevel} logLevel The LogLevel to set
-     * @param {string} transportName The name of the transport whose log level will be set
-     */
-    public setLogLevel(logLevel: LogLevel, transportName?: string): void {
-        if (transportName) {
-            let transportItem = this.transportList[transportName];
-            if (!transportItem) {
-                throw new Error(`Transport not found: ${transportName}`);
-            }
-
-            transportItem.level = logLevel;
-        } else {
-            this.globalLogLevel = logLevel;
-
-            this.transportNames.forEach((name: string) => {
-                this.transportList[name].level = logLevel;
-            });
-        }
-    }
-
-    /**
-     * Gets the global log level or the log level of a transport if specified
-     * @param {string} transportName The name of the transport whose log level will be returned
-     */
-    public getLogLevel(transportName?: string): LogLevel {
-        if (transportName) {
-            let transportItem = this.transportList[transportName];
-            if (!transportItem) {
-                throw new Error(`Transport not found: ${transportName}`);
-            }
-
-            return transportItem.level;
-        }
-
-        return this.globalLogLevel;
-    }
-
-    /**
-     * enables additional log levels of a transport if a transport is specified,
-     * Otherwise enables additional log levels of the global log level as well as the log level of all transports 
-     * @param logLevel 
-     * @param transportName 
-     */
-    public enableLogLevel(logLevel: LogLevel, transportName?: string): void {
-        this.setLogLevel(this.getLogLevel(transportName) | logLevel, transportName );
-    }
-
-    /**
-     * disables specified log levels of a transport if a transport is specified,
-     * Otherwise disables specified log levels of the global log level as well as the log level of all transports 
-     * @param logLevel 
-     * @param transportName 
-     */
-    public disableLogLevel(logLevel: LogLevel, transportName?: string): void {
-        this.setLogLevel(this.getLogLevel(transportName) & ~logLevel, transportName );
-    }
-
-    /**
      * Add a logging transport
-     * @param {ITransport} transport The transport to add
-     * @param {LogLevel} level The logging level for the transport
+     * If the transport has a log level of none, the global log level will be used.
+     * @param {Transport} transport The transport to add
      */
-    public addTransport(transport: ITransport, level: LogLevel = this.globalLogLevel): void {
+    public addTransport(transport: Transport): void {
         let name = transport.name;
+
+        if (transport.level === LogLevel.None) {
+            transport.level = this.level;
+        }
 
         if (this.transportList[name]) {
             throw new Error(`Transport already exists: ${name}`);
         }
 
-        this.transportList[name] = {transport, level};
+        this.transportList[name] = transport;
 
         if (this.transportNames.indexOf(name) === -1) {
             this.transportNames.push(name);
@@ -137,14 +66,47 @@ export class Logger {
     }
 
     /**
-     * Returns the identifiers of the configured transports
+     * Whether the logger has a transport with the specified name
+     * @param {string} name The name of the transport to look for 
      */
-    get transportIds(): Array<string> {
-        return this.transportNames.slice();
+    public hasTransport(name: string): boolean {
+        return this.transportNames.indexOf(name) !== -1;
     }
 
     /**
-     * Emit an error
+     * The number of transports configured
+     */
+    public get transportCount(): number {
+        return this.transportNames.length;
+    }
+
+    /**
+     * The configured transports
+     */
+    public get transports(): { [key: string]: Transport} {
+        return this.transportList;
+    }
+
+    /**
+     * Set the global log level(s) as well as the log level(s) for all transports
+     */
+    public set level(newLevel: LogLevel) {
+        super.level = newLevel;
+
+        this.transportNames.forEach((name: string) => {
+            this.transportList[name].level = newLevel;
+        });
+    }
+
+    /**
+     * Get the global log level(s)
+     */
+    public get level(): LogLevel {
+        return super.level;
+    }
+
+    /**
+     * Log an error
      * @param {string} message The error message
      * @param {*} data Error data
      */
@@ -153,7 +115,7 @@ export class Logger {
     }
 
     /**
-     * Emit a warning
+     * Log a warning
      * @param {string} message The warning message
      * @param {*} data Warning data
      */
@@ -162,7 +124,7 @@ export class Logger {
     }
 
     /**
-     * Emit an information message
+     * Log an information message
      * @param {string} message The info message
      * @param {*} data Info message data
      */
@@ -171,7 +133,7 @@ export class Logger {
     }
 
     /**
-     * Emit a verbose message
+     * Log a verbose message
      * @param {string} message The verbose message
      * @param {*} data Verbose message data
      */
@@ -180,7 +142,7 @@ export class Logger {
     }
 
     /**
-     * Emit a debug message
+     * Log a debug message
      * @param {string} message The debug message
      * @param {*} data Debug message data
      */
@@ -189,7 +151,7 @@ export class Logger {
     }
 
     /**
-     * Emit a telemetry event
+     * Log an event
      * @param {string} name Event name
      * @param {number} duration Event duration in milliseconds
      * @param {*} data Event data
@@ -199,7 +161,7 @@ export class Logger {
     }
 
     /**
-     * Emit a telemetry metric
+     * Log a metric
      * @param {string} name Metric name
      * @param {number} value Metric value
      * @param {number} count Metric count
@@ -218,7 +180,7 @@ export class Logger {
     }
 
     /**
-     * Emit a telemetry exception
+     * Log an exception
      * @param {Error} exception The error that was encountered
      * @param {*} data Exception data
      */
@@ -226,12 +188,12 @@ export class Logger {
         this.callAllTrackingTransports(LogLevel.Exception, t => t.exception(exception, data));
     }
 
-    private callAllTrackingTransports(level: LogLevel, action: (tracker: ITransport) => void): void {
+    private callAllTrackingTransports(level: LogLevel, action: (t: Transport) => void): void {
         this.transportNames.forEach((name: string) => {
             let transportItem = this.transportList[name];
 
-            if (transportItem.level & level) {
-                action(transportItem.transport);
+            if (transportItem.level && (transportItem.level & level)) {
+                action(transportItem);
             }
         });
     }
