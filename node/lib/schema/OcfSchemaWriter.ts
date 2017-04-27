@@ -8,8 +8,6 @@ import {
 
 import * as fs from "mz/fs";
 
-export = OcfSchemaWriter;
-
 /**
  * Writes thing schema specifications in OCF RAML+JSON format.
  */
@@ -28,3 +26,5 @@ class OcfSchemaWriter {
         throw new Error("not implemented");
     }
 }
+
+export = OcfSchemaWriter;

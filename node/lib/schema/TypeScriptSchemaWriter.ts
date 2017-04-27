@@ -10,8 +10,6 @@ import {
 
 import * as fs from "mz/fs";
 
-export = TypeScriptSchemaWriter;
-
 /**
  * Writes thing schema specifications in TypeScript type-definition format.
  * A translator written in TypeScript can use the generated interface definitions
@@ -140,3 +138,5 @@ class TypeScriptSchemaWriter {
         return "    /**\n     * " + characteristic.description + "\n     */\n";
     }
 }
+
+export = TypeScriptSchemaWriter;

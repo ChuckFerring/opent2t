@@ -10,8 +10,6 @@ import * as fs from "mz/fs";
 import * as path from "path";
 import * as raml from "raml-1-parser";
 
-export = OcfSchemaReader;
-
 /**
  * Reads thing schema specifications in OCF RAML+JSON format.
  */
@@ -346,3 +344,5 @@ class OcfSchemaReader {
         return contents;
     }
 }
+
+export = OcfSchemaReader;

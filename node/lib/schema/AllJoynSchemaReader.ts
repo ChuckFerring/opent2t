@@ -10,8 +10,6 @@ import { Parser } from "xml2js";
 
 import * as fs from "mz/fs";
 
-export = AllJoynSchemaReader;
-
 /**
  * Reads thing schema specifications in AllJoyn XML format.
  * Reference https://wiki.allseenalliance.org/irb/extended_introspection_xml
@@ -370,3 +368,5 @@ class AllJoynSchemaReader {
         return ajTypePart;
     }
 }
+
+export = AllJoynSchemaReader;

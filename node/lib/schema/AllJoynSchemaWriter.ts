@@ -10,8 +10,6 @@ import { Builder } from "xml2js";
 
 import * as fs from "mz/fs";
 
-export = AllJoynSchemaWriter;
-
 /**
  * Writes thing schema specifications in AllJoyn XML format.
  * Reference https://wiki.allseenalliance.org/irb/extended_introspection_xml
@@ -207,3 +205,5 @@ class AllJoynSchemaWriter {
         return interfaceElement;
     }
 }
+
+export = AllJoynSchemaWriter;
